@@ -8,6 +8,6 @@ Live at rogue-rail.vercel.app
 
 This app is checked every morning by Control Troll.
 
-Latest change. First polish pass with a bright sunset display mode as the default, steady speed on high refresh phones, and boss fixes.
+Latest change. World scores, fake curves and hills, six changing zones, new enemy types and fruit bonuses.
 
 See CHANGELOG.md for the full history.

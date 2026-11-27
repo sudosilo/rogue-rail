@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>ROGUE RAIL</title>
+<script src="https://2026-10-30-orange-scores.vercel.app/sdk.js" defer></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
@@ -168,6 +169,9 @@ body {
   font-size:10px; letter-spacing:5px; color:#ff00ff88;
   margin-bottom:28px;
 }
+#hsPost { font-size:12px; letter-spacing:4px; color:#00ffcc; min-height:16px; margin-bottom:12px; }
+#hsTabs { display:flex; gap:10px; margin-bottom:16px; }
+#hsTabs .ctrlbtn.sel { background:#00ffcc33; border-color:#00ffcc; }
 #hsTable {
   width:clamp(240px,55vw,420px);
   border-collapse:collapse;
@@ -241,6 +245,8 @@ body.bright .sub { color:#ffd0f0; }
 body.bright .hud-label { color:#ffffffcc; }
 body.bright #ui { background:linear-gradient(180deg, rgba(50,35,140,0.55), rgba(50,35,140,0)); }
 body.bright .ctrlbtn { background:rgba(50,35,140,0.55); }
+body.bright #combo-bar { color:#fff3a0; text-shadow:0 0 3px #2a1050, 0 0 3px #2a1050, 0 0 12px #ffcc00; }
+body.bright #warning { text-shadow:0 0 3px #300000, 0 0 3px #300000, 0 0 30px #ff2200; }
 #death-overlay {
   position:absolute; inset:0;
   background:rgba(255,0,0,0);
@@ -294,6 +300,7 @@ body.bright .ctrlbtn { background:rgba(50,35,140,0.55); }
     <span style="color:#00ffccaa">You fire automatically</span><br>
     <span class="tip-red">Red barriers are instant death</span><br>
     <span class="tip-green">Green crosses repair your hull</span><br>
+    <span style="color:#ffd81a">Shoot fruit for big points</span><br>
     <span>P</span> pause &nbsp; <span>M</span> mute &nbsp; <span>B</span> display
   </div>
   <button class="glowbtn" id="startBtn">ENGAGE</button>
@@ -336,7 +343,12 @@ body.bright .ctrlbtn { background:rgba(50,35,140,0.55); }
 <!-- HIGH SCORE SCREEN -->
 <div id="hsScreen" class="screen">
   <h2>HIGH SCORES</h2>
-  <div class="hs-sub">TOP PILOTS</div>
+  <div class="hs-sub" id="hsSub">WORLD TOP PILOTS</div>
+  <div id="hsPost"></div>
+  <div id="hsTabs">
+    <button class="ctrlbtn" id="hsWorldBtn">WORLD</button>
+    <button class="ctrlbtn" id="hsLocalBtn">THIS DEVICE</button>
+  </div>
   <table id="hsTable"><tbody id="hsBody"></tbody></table>
   <button class="glowbtn" id="hsContinueBtn">CONTINUE</button>
 </div>
@@ -433,57 +445,46 @@ window.addEventListener('resize', () => { resize(); drawIdle(); });
 // ---- Display mode: BRIGHT (sunset sky, default) or CLASSIC (original deep space) ----
 let displayMode = 'bright';
 try { displayMode = localStorage.getItem('roguerail_display') || 'bright'; } catch(e) {}
-let skyGrad = null, floorGrad = null, sunGrad = null, gradW = 0, gradH = 0;
 let gridScroll = 0;
-function buildGradients() {
-  const hy = H * HORIZON_R;
-  skyGrad = ctx.createLinearGradient(0, 0, 0, hy);
-  skyGrad.addColorStop(0, '#5b4fd9');
-  skyGrad.addColorStop(0.6, '#a978e8');
-  skyGrad.addColorStop(1, '#ffb3cf');
-  floorGrad = ctx.createLinearGradient(0, hy, 0, H);
-  floorGrad.addColorStop(0, '#ff9cc4');
-  floorGrad.addColorStop(0.35, '#b07fe8');
-  floorGrad.addColorStop(1, '#6a5fe0');
-  const sr = Math.min(W, H) * 0.16;
-  sunGrad = ctx.createLinearGradient(0, hy - sr, 0, hy);
-  sunGrad.addColorStop(0, '#fff2a0');
-  sunGrad.addColorStop(1, '#ff7aa8');
-  gradW = W; gradH = H;
-}
 function drawBackdrop() {
+  // Classic mode keeps the original motion trails; bright mode paints the zone sky
   if (displayMode !== 'bright') {
     ctx.fillStyle = 'rgba(0,0,6,0.22)';
     ctx.fillRect(0, 0, W, H);
-    return;
   }
-  if (gradW !== W || gradH !== H || !skyGrad) buildGradients();
-  const hy = H * HORIZON_R;
-  ctx.fillStyle = skyGrad;   ctx.fillRect(0, 0, W, hy);
-  ctx.fillStyle = floorGrad; ctx.fillRect(0, hy, W, H - hy);
-  // Striped sun on the horizon
+}
+function drawWorldBackdrop() {
+  if (displayMode !== 'bright') return;
+  const hy = horizonY(), vx = vanishX();
+  const sky = ctx.createLinearGradient(0, hy - H * 0.5, 0, hy);
+  sky.addColorStop(0, zoneColor('sky', 0)); sky.addColorStop(0.6, zoneColor('sky', 1)); sky.addColorStop(1, zoneColor('sky', 2));
+  const floor = ctx.createLinearGradient(0, hy, 0, H);
+  floor.addColorStop(0, zoneColor('floor', 0)); floor.addColorStop(0.35, zoneColor('floor', 1)); floor.addColorStop(1, zoneColor('floor', 2));
+  ctx.fillStyle = sky;   ctx.fillRect(-W, -H, W * 3, hy + H);
+  ctx.fillStyle = floor; ctx.fillRect(-W, hy, W * 3, H * 2);
+  // Striped sun parked on the horizon
   const sr = Math.min(W, H) * 0.16;
+  const sun = ctx.createLinearGradient(0, hy - sr, 0, hy);
+  sun.addColorStop(0, zoneColor('sun', 0)); sun.addColorStop(1, zoneColor('sun', 1));
   ctx.save();
-  ctx.beginPath(); ctx.rect(0, 0, W, hy); ctx.clip();
-  ctx.fillStyle = sunGrad;
-  ctx.beginPath(); ctx.arc(CX, hy, sr, Math.PI, 0); ctx.fill();
-  ctx.clip();
-  ctx.fillStyle = skyGrad;
+  ctx.beginPath(); ctx.arc(vx, hy, sr, Math.PI, 0); ctx.closePath();
+  ctx.fillStyle = sun; ctx.fill(); ctx.clip();
+  ctx.fillStyle = sky;
   for (let i = 1; i <= 4; i++) {
     const y = hy - sr * (0.12 + i * 0.13);
-    ctx.fillRect(CX - sr, y, sr * 2, Math.max(1.5, sr * 0.035 * i));
+    ctx.fillRect(vx - sr, y, sr * 2, Math.max(1.5, sr * 0.035 * i));
   }
   ctx.restore();
-  // Moving floor grid
+  // Floor grid lines that ride over the hills
   gridScroll = (gridScroll + 0.012 * timescale * (1 + level * 0.05)) % 1;
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.strokeStyle = zoneColor('grid', 0);
   ctx.lineWidth = 1;
-  for (let i = 0; i < 14; i++) {
-    const t = ((i + gridScroll) / 14);
-    const depth = t * t;               // bunch lines near the horizon
-    const y = hy + (H - hy) * depth;
-    ctx.globalAlpha = 0.15 + depth * 0.6;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  for (let i = 0; i < 16; i++) {
+    const d  = (i + gridScroll) / 16;
+    const wz = 1 - d * d * 1.6;
+    const y  = project(0, wz).sy;
+    ctx.globalAlpha = 0.12 + d * 0.45;
+    ctx.beginPath(); ctx.moveTo(-W, y); ctx.lineTo(W * 2, y); ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
@@ -497,7 +498,7 @@ function applyDisplayMode() {
 function drawIdle() {
   if (running) return;
   ctx.clearRect(0, 0, W, H);
-  if (displayMode === 'bright') drawBackdrop();
+  drawWorldBackdrop();
 }
 function setDisplayMode(m) {
   displayMode = m;
@@ -544,6 +545,54 @@ function isHighScore(sc) {
   const arr = loadScores();
   return arr.length < 10 || sc > (arr[arr.length - 1]?.score || 0);
 }
+
+// ---- World scores (shared score hub) ----
+const GAME_ID = 'rogue-rail';
+const TAG_KEY = 'roguerail_tag';
+let hsView = 'world';
+let lastWorldId = null;
+const hsPost = document.getElementById('hsPost');
+const hsSub  = document.getElementById('hsSub');
+const hsWorldBtn = document.getElementById('hsWorldBtn');
+const hsLocalBtn = document.getElementById('hsLocalBtn');
+function setHsView(v, newScore) {
+  hsView = v;
+  hsWorldBtn.classList.toggle('sel', v === 'world');
+  hsLocalBtn.classList.toggle('sel', v === 'local');
+  hsSub.textContent = v === 'world' ? 'WORLD TOP PILOTS' : 'THIS DEVICE';
+  if (v === 'local') renderHsTable(newScore);
+  else renderWorldTable();
+}
+function renderWorldTable() {
+  hsBody.innerHTML = '<tr><td colspan="3" style="color:#ffffff66;text-align:center;padding:20px;letter-spacing:3px;">LOADING</td></tr>';
+  if (!window.Scores) {
+    hsBody.innerHTML = '<tr><td colspan="3" style="color:#ffffff66;text-align:center;padding:20px;letter-spacing:3px;">WORLD BOARD OFFLINE</td></tr>';
+    return;
+  }
+  window.Scores.board(GAME_ID, 10).then(d => {
+    if (hsView !== 'world') return;
+    if (!d || !d.ok) {
+      hsBody.innerHTML = '<tr><td colspan="3" style="color:#ffffff66;text-align:center;padding:20px;letter-spacing:3px;">WORLD BOARD OFFLINE</td></tr>';
+      return;
+    }
+    hsBody.innerHTML = '';
+    if (!d.board.length) {
+      hsBody.innerHTML = '<tr><td colspan="3" style="color:#ffffff66;text-align:center;padding:20px;letter-spacing:3px;">NO SCORES YET</td></tr>';
+      return;
+    }
+    d.board.forEach(e => {
+      const isNew = e.id === lastWorldId;
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.className = 'hs-rank'; tdR.textContent = e.rank + '.';
+      const tdT = document.createElement('td'); tdT.className = 'hs-init' + (isNew ? ' hs-new' : ''); tdT.textContent = e.tag;
+      const tdS = document.createElement('td'); tdS.className = 'hs-score' + (isNew ? ' hs-new' : ''); tdS.textContent = String(e.score).padStart(6,'0');
+      tr.append(tdR, tdT, tdS);
+      hsBody.appendChild(tr);
+    });
+  });
+}
+hsWorldBtn.addEventListener('click', () => { hsWorldBtn.blur(); setHsView('world'); });
+hsLocalBtn.addEventListener('click', () => { hsLocalBtn.blur(); setHsView('local'); });
 
 // ---- Render high score table ----
 function renderHsTable(newScore) {
@@ -608,9 +657,13 @@ window.addEventListener('keydown', initKeyHandler);
 function openInitScreen(sc) {
   pendingScore = sc;
   initLetters  = [0, 0, 0];
+  try {
+    const t = localStorage.getItem(TAG_KEY) || '';
+    if (/^[A-Z]{3}$/.test(t)) initLetters = t.split('').map(ch => ALPHA.indexOf(ch));
+  } catch(e) {}
   initSlot     = 0;
   [0,1,2].forEach(i => {
-    document.getElementById('box' + i).textContent = 'A';
+    document.getElementById('box' + i).textContent = ALPHA[initLetters[i]];
     document.getElementById('box' + i).classList.toggle('active', i === 0);
   });
   initScoreVal.textContent = String(sc).padStart(6,'0');
@@ -618,9 +671,28 @@ function openInitScreen(sc) {
 }
 
 function confirmInitials() {
-  const arr = insertScore(getInitials(), pendingScore);
-  renderHsTable(pendingScore);
+  if (!initScreen.classList.contains('active')) return;
+  const tag = getInitials();
+  try { localStorage.setItem(TAG_KEY, tag); } catch(e) {}
+  if (isHighScore(pendingScore)) insertScore(tag, pendingScore);
+  lastWorldId = null;
   showScreen('hsScreen');
+  if (window.Scores) {
+    hsPost.textContent = 'POSTING SCORE';
+    setHsView('local', pendingScore);
+    window.Scores.submit({ game: GAME_ID, tag, score: pendingScore, duration: runMs }).then(r => {
+      if (r && r.ok) {
+        lastWorldId = r.entry && r.entry.id;
+        hsPost.textContent = r.rank ? 'WORLD RANK #' + r.rank : 'SCORE POSTED';
+        setHsView('world');
+      } else {
+        hsPost.textContent = 'SAVED ON THIS DEVICE';
+      }
+    });
+  } else {
+    hsPost.textContent = 'SAVED ON THIS DEVICE';
+    setHsView('local', pendingScore);
+  }
 }
 
 initConfirm.addEventListener('click', confirmInitials);
@@ -632,8 +704,9 @@ hsContinueBtn.addEventListener('click', () => {
 });
 
 titleHsBtn.addEventListener('click', () => {
-  renderHsTable();
+  hsPost.textContent = '';
   showScreen('hsScreen');
+  setHsView('world');
 });
 
 // ---- Game constants ----
@@ -642,6 +715,7 @@ const HORIZON_R = 0.42;
 const SHIP_Y_R  = 0.80;
 
 let running      = false;
+let runStartMs   = 0, runMs = 0;
 let score        = 0;
 let health       = 100;
 let level        = 1;
@@ -775,22 +849,132 @@ canvas.addEventListener('touchcancel', e => {
 }, { passive: false });
 
 // ---- Helpers ----
-function laneToX(lane) {
-  const margin = W * 0.1;
-  return margin + (lane / (LANES - 1)) * (W - margin * 2);
-}
+function laneWx(lane) { return (lane / (LANES - 1)) * 2 - 1; }
+function laneToX(lane) { return CX + laneWx(lane) * W * 0.40; }
 function moveShip(dir) {
   if (!running || dead) return;
   shipLane = Math.max(0, Math.min(LANES - 1, shipLane + dir));
 }
+// The track never turns. Far points are pushed sideways and up or down so it
+// looks like the rail bends and climbs. Near the ship nothing moves.
+let bendX = 0, bendY = 0, bendTX = 0, bendTY = 0, bendTimer = 0;
+function horizonY() { return H * HORIZON_R + bendY * H * 0.11; }
+function vanishX()  { return CX + bendX * W * 0.34; }
 function project(wx, wz) {
   const hy   = H * HORIZON_R;
   const sy   = H * SHIP_Y_R;
   const t    = 1 - wz;
-  const halfW= W * 0.46;
-  const halfH= W * 0.04;
-  const sx   = CX + wx * (halfW * t + halfH * (1 - t));
-  return { sx, sy: hy + (sy - hy) * t, scale: t };
+  const halfW= W * 0.40;
+  const halfH= W * 0.035;
+  const b    = wz > 0 ? wz * wz : 0;
+  const sx   = CX + wx * (halfW * t + halfH * (1 - t)) + bendX * W * 0.34 * b;
+  return { sx, sy: hy + (sy - hy) * t + bendY * H * 0.11 * b, scale: t };
+}
+function updateBend() {
+  const z = zoneMix();
+  bendTimer -= timescale;
+  if (bendTimer <= 0) {
+    bendTX = (Math.random() * 2 - 1) * z.curve;
+    bendTY = (Math.random() * 2 - 1) * z.hill;
+    bendTimer = 150 + Math.random() * 260;
+  }
+  const k = 0.006 + z.chaos * 0.01;
+  bendX += (bendTX - bendX) * k * timescale;
+  bendY += (bendTY - bendY) * k * timescale;
+}
+
+// ---- Zones: forever mode keeps changing its look and its mood ----
+// Each zone flips the one before it: bright to dark, calm to wild, warm to cold.
+const ZONES = [
+  { name:'SUNSET STRIP',  sky:['#5b4fd9','#a978e8','#ffb3cf'], floor:['#ff9cc4','#b07fe8','#6a5fe0'], sun:['#fff2a0','#ff7aa8'], grid:'#ffffff', lane:'#ff28c8', curve:0.45, hill:0.30, chaos:0.35 },
+  { name:'BLUE ORDER',    sky:['#0c2266','#1d47a8','#5a9cf0'], floor:['#4a8ae0','#1a4498','#0b1e55'], sun:['#e6f7ff','#78c8ff'], grid:'#a6dcff', lane:'#7fe0ff', curve:0.0,  hill:0.0,  chaos:0.0  },
+  { name:'ACID STORM',    sky:['#173300','#4f8a00','#dcff3a'], floor:['#d4ff30','#4a8a10','#123305'], sun:['#ffffff','#eaff40'], grid:'#f6ffb0', lane:'#ff3aa0', curve:1.0,  hill:0.85, chaos:1.0  },
+  { name:'ICE CATHEDRAL', sky:['#9fd8ff','#dff3ff','#ffffff'], floor:['#ffffff','#c2e6ff','#86bdf2'], sun:['#ffffff','#a8e0ff'], grid:'#3a78c8', lane:'#2a6fd8', curve:0.12, hill:0.45, chaos:0.1  },
+  { name:'MAGMA RUN',     sky:['#2e0600','#801800','#ff6a00'], floor:['#ff8c00','#a02200','#360900'], sun:['#fff0a0','#ff3300'], grid:'#ffd070', lane:'#ffe000', curve:0.9,  hill:0.5,  chaos:0.9  },
+  { name:'CANDY GRID',    sky:['#ff6fc2','#ffb6e4','#fff2fb'], floor:['#fff2fb','#a6f2e4','#3ec6be'], sun:['#ffffff','#ffd84a'], grid:'#ff4fae', lane:'#00a8a8', curve:0.3,  hill:1.0,  chaos:0.25 }
+];
+const ZONE_STEPS = 2400;   // 40 seconds of play per zone
+const ZONE_BLEND = 240;    // 4 second crossfade
+let zoneIdx = 0, zonePrev = 0, zoneBlend = 1, zoneTimer = ZONE_STEPS, zoneBanner = 0;
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+ZONES.forEach(z => {
+  z.rgb = {};
+  ['sky','floor','sun'].forEach(k => z.rgb[k] = z[k].map(hexRgb));
+  z.rgb.grid = hexRgb(z.grid); z.rgb.lane = hexRgb(z.lane);
+});
+function mixRgb(a, b, t) { return 'rgb(' + Math.round(a[0]+(b[0]-a[0])*t) + ',' + Math.round(a[1]+(b[1]-a[1])*t) + ',' + Math.round(a[2]+(b[2]-a[2])*t) + ')'; }
+function mixRgba(a, b, t, al) { return 'rgba(' + Math.round(a[0]+(b[0]-a[0])*t) + ',' + Math.round(a[1]+(b[1]-a[1])*t) + ',' + Math.round(a[2]+(b[2]-a[2])*t) + ',' + al + ')'; }
+function zoneMix() {
+  const a = ZONES[zonePrev], b = ZONES[zoneIdx], t = zoneBlend;
+  return {
+    a, b, t,
+    curve: a.curve + (b.curve - a.curve) * t,
+    hill:  a.hill  + (b.hill  - a.hill)  * t,
+    chaos: a.chaos + (b.chaos - a.chaos) * t
+  };
+}
+function updateZone() {
+  if (zoneBlend < 1) zoneBlend = Math.min(1, zoneBlend + 1 / ZONE_BLEND);
+  if (countdownFrames > 0 || bossActive) return;
+  if (zoneBanner > 0) zoneBanner--;
+  zoneTimer--;
+  if (zoneTimer <= 0) {
+    zonePrev = zoneIdx;
+    zoneIdx = (zoneIdx + 1) % ZONES.length;
+    zoneBlend = 0; zoneTimer = ZONE_STEPS; zoneBanner = 150;
+    bendTimer = 0;
+  }
+}
+function zoneColor(key, i, al) {
+  const z = zoneMix();
+  const a = key === 'grid' || key === 'lane' ? z.a.rgb[key] : z.a.rgb[key][i];
+  const b = key === 'grid' || key === 'lane' ? z.b.rgb[key] : z.b.rgb[key][i];
+  return al === undefined ? mixRgb(a, b, z.t) : mixRgba(a, b, z.t, al);
+}
+
+// ---- Trackside scenery: pylons and gate arches rushing past ----
+let scenery = [];
+let sceneryTimer = 0;
+function updateScenery() {
+  const chaos = zoneMix().chaos;
+  sceneryTimer -= timescale;
+  if (sceneryTimer <= 0) {
+    const gate = Math.random() < 0.12;
+    if (chaos < 0.5) {
+      scenery.push({ wz: 0.98, side: 0, gate, h: 1, tilt: 0 });
+      sceneryTimer = 26;
+    } else {
+      scenery.push({ wz: 0.98, side: Math.random() < 0.5 ? -1 : 1, gate, h: 0.6 + Math.random() * 0.9, tilt: (Math.random() - 0.5) * 0.6 });
+      sceneryTimer = 10 + Math.random() * 22;
+    }
+  }
+  const spd = (0.0085 + level * 0.0003) * timescale;
+  scenery = scenery.filter(p => (p.wz -= spd) > 0.0);
+}
+function drawScenery() {
+  const col = displayMode === 'bright' ? zoneColor('lane', 0) : 'rgb(255,0,255)';
+  ctx.strokeStyle = col;
+  for (const p of scenery) {
+    const sides = p.side === 0 ? [-1, 1] : [p.side];
+    const fade = Math.min(1, (0.98 - p.wz) * 8);
+    ctx.globalAlpha = fade * (0.35 + 0.55 * (1 - p.wz));
+    let tops = [];
+    for (const sd of sides) {
+      const base = project(sd * 1.32, p.wz);
+      const hgt  = (40 + 110 * p.h) * base.scale + 2;
+      const tx   = base.sx + p.tilt * hgt;
+      ctx.lineWidth = Math.max(1, 4 * base.scale);
+      ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(tx, base.sy - hgt); ctx.stroke();
+      ctx.beginPath(); ctx.arc(tx, base.sy - hgt, Math.max(1, 5 * base.scale), 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+      tops.push([tx, base.sy - hgt]);
+    }
+    if (p.gate && tops.length === 2) {
+      ctx.lineWidth = Math.max(1, 3 * project(0, p.wz).scale);
+      ctx.beginPath(); ctx.moveTo(tops[0][0], tops[0][1]); ctx.lineTo(tops[1][0], tops[1][1]); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---- Stars ----
@@ -829,18 +1013,30 @@ class Ring {
     this.spin  = (Math.random()-0.5)*0.004;
     this.angle = Math.random()*Math.PI;
   }
-  update() { this.z -= (9 + level) * timescale; this.angle += this.spin; if (this.z < 8) this.reset(false); }
+  update() {
+    const chaos = zoneMix().chaos;
+    this.z -= (9 + level) * timescale;
+    this.angle += this.spin * (chaos * 6) * timescale;
+    if (this.z < 8) this.reset(false);
+  }
   draw() {
     const sc = W / this.z, r = 310 * sc;
     if (r < 1.5 || r > W * 2.2) return;
+    const chaos = zoneMix().chaos;
     ctx.save();
-    ctx.translate(CX, H * HORIZON_R);
+    ctx.translate(vanishX() + (CX - vanishX()) * (1 - this.z / 1150), horizonY());
+    if (chaos < 0.3) {
+      // Orderly zones: every ring squared up the same way, same shape
+      ctx.rotate(-this.angle + Math.PI / 4);
+    }
     ctx.beginPath();
-    for (let i = 0; i <= this.sides; i++) {
-      const a = (i / this.sides) * Math.PI * 2 + this.angle;
+    const sides = chaos < 0.3 ? 4 : this.sides;
+    for (let i = 0; i <= sides; i++) {
+      const a = (i / sides) * Math.PI * 2 + this.angle;
       i === 0 ? ctx.moveTo(Math.cos(a)*r, Math.sin(a)*r) : ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
     }
-    ctx.strokeStyle = 'hsl('+this.hue+',100%,56%)';
+    const chaosNow = zoneMix().chaos;
+    ctx.strokeStyle = (displayMode === 'bright' && chaosNow < 0.3) ? zoneColor('lane', 0) : 'hsl('+this.hue+',100%,56%)';
     ctx.lineWidth   = Math.max(0.3, 1.8 * sc);
     ctx.globalAlpha = Math.min(0.65, 0.7 * (1 - this.z / 1150));
     ctx.stroke();
@@ -856,7 +1052,7 @@ function spawnSpeedLine() {
   const dist  = 60 + Math.random() * Math.min(W,H) * 0.45;
   const spd   = 14 + level * 1.4;
   speedLines.push({
-    x: CX + Math.cos(angle)*dist*0.3, y: H*HORIZON_R + Math.sin(angle)*dist*0.3,
+    x: vanishX() + Math.cos(angle)*dist*0.3, y: horizonY() + Math.sin(angle)*dist*0.3,
     vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
     life: 1, hue: Math.random()*80+150, len: 50+Math.random()*100
   });
@@ -1024,8 +1220,7 @@ function updateDrawBoss() {
   const { sx: bsx, sy: bsy } = project(boss.wx, boss.wz);
   bullets = bullets.filter(b => {
     if (boss.dead || boss.arriving) return true;
-    const dx = b.x - bsx, dy = b.y - bsy;
-    if (dx*dx + dy*dy < (r*0.65)*(r*0.65)) {
+    if (Math.abs(b.wx - boss.wx) < 0.42 && b.wz >= boss.wz - 0.03) {
       boss.hp--;
       spawnExplosion(bsx + (Math.random()-0.5)*r, bsy + (Math.random()-0.5)*r*0.4, col1, 6);
       if (boss.hp <= 0) {
@@ -1070,29 +1265,51 @@ function showBossVictory(msg) {
   }, 3000);
 }
 
+function makeEnemy(kind, lane, wz, speed) {
+  const shapes = ['diamond','hex','circle','tri','star','cross'];
+  const o = {
+    kind, wx: laneWx(lane), wz, lane, speed,
+    type: kind === 'basic' ? shapes[Math.floor(Math.random()*shapes.length)] : kind,
+    isBlock: false, isSuperBlock: false,
+    hue: Math.random()*320,
+    hp: 1, maxHp: 1,
+    rot: 0, rotSpd: (Math.random()-0.5)*0.07,
+    dead: false, warnShown: false, flash: 0
+  };
+  if (kind === 'tank')     { o.hp = o.maxHp = 3; o.hue = 28; o.rotSpd = 0; }
+  if (kind === 'splitter') { o.hp = o.maxHp = 2; o.hue = 300; }
+  if (kind === 'weaver')   { o.hue = 180; o.rotSpd = 0; o.weaveT = 40 + Math.random() * 40; }
+  if (kind === 'shard')    { o.hue = 320; o.rotSpd = 0.15; }
+  if (kind === 'fruit')    { o.fruit = Math.floor(Math.random() * FRUITS.length); o.rot = 0; o.rotSpd = 0; o.wob = Math.random() * 6; }
+  return o;
+}
+
 function spawnObstacle() {
   const lane = Math.floor(Math.random() * LANES);
-  const wx   = (lane / (LANES - 1)) * 2 - 1;
+  const wx   = laneWx(lane);
   const isBlock      = Math.random() < 0.10;
   const isSuperBlock = !isBlock && score >= SUPER_BARRIER_SCORE && Math.random() < 0.05;
-  const blockType    = isSuperBlock ? 'superblock' : isBlock ? 'block' : null;
-  const types = ['diamond','hex','circle','tri'];
-  const hp = isSuperBlock
-    ? (bossDefeated2 ? SUPER_BARRIER_HP_UPGRADED : SUPER_BARRIER_HP)
-    : isBlock
-      ? (bossDefeated2 ? BARRIER_HP_UPGRADED : BARRIER_HP)
-      : 1;
-  obstacles.push({
-    wx, wz:0.97, lane,
-    speed: (0.004 + level*0.00028 + Math.random()*0.001) * phaseSpeed,
-    type: (isBlock || isSuperBlock) ? 'block' : types[Math.floor(Math.random()*types.length)],
-    isBlock: isBlock || isSuperBlock,
-    isSuperBlock,
-    hue: isBlock ? 0 : Math.random()*320,
-    hp, maxHp: hp,
-    rot:0, rotSpd:(Math.random()-0.5)*0.07,
-    dead:false, warnShown:false
-  });
+  const speed = (0.004 + level*0.00028 + Math.random()*0.001) * phaseSpeed;
+  if (isBlock || isSuperBlock) {
+    const hp = isSuperBlock
+      ? (bossDefeated2 ? SUPER_BARRIER_HP_UPGRADED : SUPER_BARRIER_HP)
+      : (bossDefeated2 ? BARRIER_HP_UPGRADED : BARRIER_HP);
+    obstacles.push({
+      kind: 'block', wx, wz:0.97, lane, speed,
+      type: 'block', isBlock: true, isSuperBlock,
+      hue: 0, hp, maxHp: hp,
+      rot:0, rotSpd:(Math.random()-0.5)*0.07,
+      dead:false, warnShown:false, flash: 0
+    });
+    return;
+  }
+  const r = Math.random();
+  let kind = 'basic';
+  if (r < 0.06) kind = 'fruit';
+  else if (level >= 3 && r < 0.18) kind = 'weaver';
+  else if (level >= 4 && r < 0.28) kind = 'tank';
+  else if (level >= 5 && r < 0.36) kind = 'splitter';
+  obstacles.push(makeEnemy(kind, lane, 0.97, kind === 'tank' ? speed * 0.8 : speed));
 }
 
 function drawObstacle(o) {
@@ -1223,6 +1440,12 @@ function drawObstacle(o) {
       ctx.fillRect(bx, by, bw * (o.hp / o.maxHp), bh);
       ctx.shadowBlur = 0;
     }
+  } else if (o.kind === 'fruit') {
+    ctx.rotate(Math.sin(frame * 0.08 + o.wob) * 0.35);
+    const glow = 0.5 + 0.5 * Math.sin(frame * 0.2 + o.wob);
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.12 + glow * 0.18) + ')'; ctx.fill();
+    drawFruit(o.fruit, r);
   } else {
     const brt = displayMode === 'bright';
     const c = 'hsl('+o.hue+',100%,'+(brt ? 42 : 60)+'%)';
@@ -1233,8 +1456,29 @@ function drawObstacle(o) {
     if (o.type==='diamond') { ctx.moveTo(0,-r); ctx.lineTo(r*0.65,0); ctx.lineTo(0,r); ctx.lineTo(-r*0.65,0); }
     else if (o.type==='hex') { for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2; i===0?ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r):ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);} }
     else if (o.type==='tri') { ctx.moveTo(0,-r); ctx.lineTo(r*0.86,r*0.5); ctx.lineTo(-r*0.86,r*0.5); }
+    else if (o.type==='star') { for(let i=0;i<10;i++){const a=(i/10)*Math.PI*2-Math.PI/2, rr=i%2?r*0.45:r; i===0?ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr):ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} }
+    else if (o.type==='cross') { const a=r*0.32; ctx.moveTo(-a,-r);ctx.lineTo(a,-r);ctx.lineTo(a,-a);ctx.lineTo(r,-a);ctx.lineTo(r,a);ctx.lineTo(a,a);ctx.lineTo(a,r);ctx.lineTo(-a,r);ctx.lineTo(-a,a);ctx.lineTo(-r,a);ctx.lineTo(-r,-a);ctx.lineTo(-a,-a); }
+    else if (o.type==='tank') { ctx.rect(-r,-r*0.8,r*2,r*1.6); }
+    else if (o.type==='splitter') { ctx.moveTo(0,-r*1.1); ctx.lineTo(r*0.9,0); ctx.lineTo(0,r*1.1); ctx.lineTo(-r*0.9,0); }
+    else if (o.type==='weaver') { ctx.moveTo(-r,-r*0.5); ctx.lineTo(0,r*0.6); ctx.lineTo(r,-r*0.5); ctx.lineTo(r*0.55,-r*0.5); ctx.lineTo(0,r*0.05); ctx.lineTo(-r*0.55,-r*0.5); }
+    else if (o.type==='shard') { ctx.moveTo(0,-r*0.6); ctx.lineTo(r*0.5,r*0.35); ctx.lineTo(-r*0.5,r*0.35); }
     else { ctx.arc(0,0,r,0,Math.PI*2); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
+    // Detail lines for the tougher kinds
+    if (o.type==='tank') {
+      ctx.beginPath(); ctx.rect(-r*0.6,-r*0.45,r*1.2,r*0.9); ctx.stroke();
+      ctx.fillStyle = c;
+      [[-0.8,-0.6],[0.8,-0.6],[-0.8,0.6],[0.8,0.6]].forEach(([x,y]) => { ctx.beginPath(); ctx.arc(x*r,y*r,Math.max(1,r*0.09),0,Math.PI*2); ctx.fill(); });
+      if (o.hp < o.maxHp && r > 8) {
+        ctx.beginPath(); ctx.moveTo(-r*0.5,-r*0.3); ctx.lineTo(0,r*0.1); ctx.lineTo(r*0.3,-r*0.2); ctx.stroke();
+      }
+    }
+    if (o.type==='splitter') { ctx.beginPath(); ctx.moveTo(0,-r*1.1); ctx.lineTo(0,r*1.1); ctx.stroke(); }
+    if (o.flash > 0) {
+      o.flash--;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3*scale);
+      ctx.beginPath(); ctx.arc(0,0,r*1.1,0,Math.PI*2); ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -1262,8 +1506,146 @@ function drawShip() {
   ctx.restore();
 }
 
+// ---- Fruit: bonus targets. Shoot them or fly into them ----
+const FRUITS = [
+  { name:'CHERRY',    col:'#ff2a4a', pts:1000 },
+  { name:'APPLE',     col:'#ff3b30', pts:750  },
+  { name:'BANANA',    col:'#ffd81a', pts:1250 },
+  { name:'MELON',     col:'#ff5a7a', pts:1500 },
+  { name:'GRAPES',    col:'#9b4dff', pts:2000 },
+  { name:'ORANGE',    col:'#ff9a1a', pts:800  },
+  { name:'PINEAPPLE', col:'#ffc21a', pts:3000 }
+];
+function drawFruit(i, r) {
+  ctx.shadowBlur = 0;
+  ctx.lineWidth  = Math.max(1, r * 0.08);
+  ctx.strokeStyle = '#3a1c10';
+  const leaf = (x, y, a) => {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 0.32, r * 0.13, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#2fbf3a'; ctx.fill(); ctx.stroke(); ctx.restore();
+  };
+  const ball = (x, y, rr, col) => {
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x - rr * 0.35, y - rr * 0.35, rr * 0.22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+  };
+  const name = FRUITS[i].name;
+  if (name === 'CHERRY') {
+    ctx.strokeStyle = '#2f8a2a';
+    ctx.beginPath(); ctx.moveTo(-r*0.35, r*0.1); ctx.quadraticCurveTo(-r*0.1, -r*0.5, r*0.15, -r*0.85);
+    ctx.moveTo(r*0.4, r*0.15); ctx.quadraticCurveTo(r*0.3, -r*0.4, r*0.15, -r*0.85); ctx.stroke();
+    ctx.strokeStyle = '#3a1c10';
+    ball(-r*0.38, r*0.32, r*0.38, '#ff2a4a'); ball(r*0.4, r*0.36, r*0.38, '#e8143a');
+    leaf(r*0.35, -r*0.8, 0.4);
+  } else if (name === 'APPLE') {
+    ball(0, r*0.1, r*0.75, '#ff3b30');
+    ctx.beginPath(); ctx.moveTo(0, -r*0.55); ctx.lineTo(r*0.08, -r*0.9); ctx.stroke();
+    leaf(r*0.32, -r*0.75, -0.4);
+  } else if (name === 'BANANA') {
+    ctx.beginPath();
+    ctx.arc(0, -r*0.7, r*1.25, Math.PI*0.25, Math.PI*0.75);
+    ctx.arc(0, -r*1.05, r*1.25, Math.PI*0.70, Math.PI*0.30, true);
+    ctx.closePath(); ctx.fillStyle = '#ffd81a'; ctx.fill(); ctx.stroke();
+  } else if (name === 'MELON') {
+    ctx.beginPath(); ctx.arc(0, -r*0.25, r*0.95, 0, Math.PI); ctx.closePath();
+    ctx.fillStyle = '#2bb24a'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -r*0.25, r*0.78, 0, Math.PI); ctx.closePath();
+    ctx.fillStyle = '#ff5a7a'; ctx.fill();
+    ctx.fillStyle = '#2a1410';
+    [[-0.4,0.05],[0,0.2],[0.4,0.05],[-0.2,0.3],[0.2,0.3]].forEach(([x,y]) => {
+      ctx.beginPath(); ctx.ellipse(x*r, y*r, r*0.05, r*0.09, 0, 0, Math.PI*2); ctx.fill();
+    });
+  } else if (name === 'GRAPES') {
+    [[-0.4,-0.3],[0,-0.3],[0.4,-0.3],[-0.2,0.1],[0.2,0.1],[0,0.5]].forEach(([x,y]) => ball(x*r, y*r, r*0.27, '#9b4dff'));
+    leaf(r*0.25, -r*0.75, 0.3);
+  } else if (name === 'ORANGE') {
+    ball(0, r*0.05, r*0.75, '#ff9a1a');
+    ctx.fillStyle = 'rgba(160,70,0,0.5)';
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(Math.cos(k)*r*0.4, Math.sin(k*1.7)*r*0.35, r*0.04, 0, Math.PI*2); ctx.fill(); }
+    leaf(r*0.2, -r*0.75, -0.3);
+  } else {
+    ctx.fillStyle = '#2fbf3a';
+    ctx.beginPath();
+    for (let k = -2; k <= 2; k++) { ctx.moveTo(k*r*0.15, -r*0.45); ctx.lineTo(k*r*0.22, -r*1.05 + Math.abs(k)*r*0.18); ctx.lineTo(k*r*0.15 + r*0.12, -r*0.45); }
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, r*0.15, r*0.5, r*0.68, 0, 0, Math.PI*2);
+    ctx.fillStyle = '#ffc21a'; ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(140,80,0,0.7)'; ctx.lineWidth = Math.max(0.5, r*0.04);
+    ctx.save(); ctx.clip();
+    for (let k = -3; k <= 3; k++) {
+      ctx.beginPath(); ctx.moveTo(k*r*0.3 - r, -r); ctx.lineTo(k*r*0.3 + r, r*1.2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k*r*0.3 + r, -r); ctx.lineTo(k*r*0.3 - r, r*1.2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// ---- Floating score text ----
+let popups = [];
+function popup(x, y, text, col) { popups.push({ x, y, text, col, life: 1 }); }
+function drawPopups() {
+  popups = popups.filter(p => {
+    p.y -= 0.9; p.life -= 0.016;
+    if (p.life <= 0) return false;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, p.life * 1.6);
+    ctx.font = 'bold ' + Math.round(clamp(12, W * 0.035, 18)) + 'px Courier New';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,10,40,0.85)';
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle = p.col; ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+    return true;
+  });
+}
+
+function addScore(pts) {
+  score += pts;
+  combo = Math.min(combo + 1, 8);
+  comboTimer = 160;
+  scoreDisplay.textContent = String(score).padStart(6,'0');
+}
+
+const KIND_PTS = { basic:100, weaver:150, tank:300, splitter:200, shard:60 };
+function killObstacle(o, sx, sy) {
+  if (o.isBlock) {
+    spawnExplosion(sx, sy, '#ff4400', 30);
+    spawnExplosion(sx, sy, '#ffaa00', 20);
+    const pts = 500 * combo;
+    popup(sx, sy - 20, '+' + pts, '#ffcc00');
+    addScore(pts);
+    return;
+  }
+  if (o.kind === 'fruit') {
+    const f = FRUITS[o.fruit];
+    spawnExplosion(sx, sy, f.col, 28);
+    spawnExplosion(sx, sy, '#ffffff', 8);
+    const pts = f.pts * combo;
+    popup(sx, sy - 20, '+' + pts + ' ' + f.name, f.col);
+    addScore(pts);
+    return;
+  }
+  const pts = (KIND_PTS[o.kind] || 100) * combo;
+  spawnExplosion(sx, sy, 'hsl('+o.hue+',100%,62%)', o.kind === 'tank' ? 34 : 22);
+  if (o.kind === 'tank' || o.kind === 'splitter') popup(sx, sy - 16, '+' + pts, 'hsl('+o.hue+',100%,75%)');
+  if (o.kind === 'splitter') {
+    [o.lane - 1, o.lane + 1].forEach(l => {
+      if (l < 0 || l >= LANES) return;
+      obstacles.push(makeEnemy('shard', l, o.wz, o.speed * 1.15));
+    });
+  }
+  if (Math.random() < 0.005 && slowmoFrames === 0) {
+    powerups.push({ wx: o.wx, wz: o.wz, lane: o.lane, rot: 0, pulse: 0 });
+  } else if (health < 100 && repairs.length === 0 && Math.random() < REPAIR_CHANCE) {
+    repairs.push({ wx: o.wx, wz: o.wz, lane: o.lane, pulse: 0 });
+  }
+  addScore(pts);
+}
+
+const BULLET_SPD = 0.055;
 function updateBullets() {
-  const hy = H * HORIZON_R;
   const canBreakBarriers = bossDefeated1;
 
   // Reset barrier hp if player left that lane
@@ -1276,43 +1658,26 @@ function updateBullets() {
   }
 
   bullets = bullets.filter(b => {
-    b.y -= 24 * timescale;
-    if (b.y < hy) return false;
+    const prev = b.wz;
+    b.wz += BULLET_SPD * timescale;
+    if (b.wz > 0.97) return false;
     let hit = false;
     for (let o of obstacles) {
       if (o.dead) continue;
-      // Skip barriers unless unlocked
       if (o.isBlock && !canBreakBarriers) continue;
-      const { sx, sy, scale } = project(o.wx, o.wz);
-      const r = 40*scale, dx = b.x-sx, dy = b.y-sy;
-      if (dx*dx+dy*dy < (r+10)*(r+10)) {
-        o.hp--;
-        if (o.hp <= 0) {
-          o.dead = true;
-          if (o.isBlock) {
-            spawnExplosion(sx, sy, '#ff4400', 30);
-            spawnExplosion(sx, sy, '#ffaa00', 20);
-            score += 500 * combo;
-          } else {
-            spawnExplosion(sx, sy, 'hsl('+o.hue+',100%,62%)', 22);
-            score += 100 * combo;
-            if (Math.random() < 0.005 && slowmoFrames === 0) {
-              powerups.push({ wx: o.wx, wz: o.wz, lane: o.lane, rot: 0, pulse: 0 });
-            } else if (health < 100 && repairs.length === 0 && Math.random() < REPAIR_CHANCE) {
-              repairs.push({ wx: o.wx, wz: o.wz, lane: o.lane, pulse: 0 });
-            }
-          }
-          combo = Math.min(combo+1, 8);
-          comboTimer = 160;
-          scoreDisplay.textContent = String(score).padStart(6,'0');
-        }
-        hit = true; break;
-      }
+      if (Math.abs(o.wx - b.wx) > 0.18) continue;
+      if (o.wz < prev - 0.03 || o.wz > b.wz + 0.02) continue;
+      const { sx, sy } = project(o.wx, o.wz);
+      o.hp--; o.flash = 5;
+      if (o.hp <= 0) { o.dead = true; killObstacle(o, sx, sy); }
+      else spawnExplosion(sx, sy, '#ffffff', 4);
+      hit = true; break;
     }
     if (hit) return false;
-    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x,b.y+28);
+    const a = project(b.wx, b.wz), c = project(b.wx, Math.max(0, b.wz - 0.05));
+    ctx.beginPath(); ctx.moveTo(c.sx, c.sy); ctx.lineTo(a.sx, a.sy);
     ctx.strokeStyle = '#00ffcc'; ctx.shadowColor = '#00ffcc';
-    ctx.shadowBlur = 12; ctx.lineWidth = 3; ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.shadowBlur = 12; ctx.lineWidth = Math.max(1.2, 3 * a.scale + 0.5); ctx.stroke(); ctx.shadowBlur = 0;
     return true;
   });
 }
@@ -1349,11 +1714,13 @@ function endGame() {
   document.body.classList.remove('playing');
   bgmPause();
   moveLeft = false; moveRight = false;
-  if (isHighScore(score)) {
+  runMs = Math.max(0, Date.now() - runStartMs);
+  if (score > 0) {
     openInitScreen(score);
   } else {
-    renderHsTable();
+    hsPost.textContent = '';
     showScreen('hsScreen');
+    setHsView('world');
   }
 }
 
@@ -1381,7 +1748,11 @@ function initGame() {
   hullFill.style.width = '100%';
   deathOverlay.style.background = 'rgba(255,0,0,0)';
   repairs = []; paused = false;
+  zoneIdx = 0; zonePrev = 0; zoneBlend = 1; zoneTimer = ZONE_STEPS; zoneBanner = 150;
+  bendX = 0; bendY = 0; bendTX = 0; bendTY = 0; bendTimer = 240;
+  scenery = []; sceneryTimer = 0; popups = [];
   countdownFrames = COUNTDOWN_DUR;
+  runStartMs = Date.now();
   ctrls.classList.add('on');
   document.body.classList.add('playing');
   bgmPlay();
@@ -1419,7 +1790,7 @@ function step() {
   if (!dead && countdownFrames === 0) {
     autoShoot--;
     if (autoShoot <= 0) {
-      bullets.push({ x: shipX, y: H*SHIP_Y_R - 30 });
+      bullets.push({ lane: shipLane, wx: laneWx(shipLane), wz: 0.03 });
       autoShoot = 8;
     }
 
@@ -1505,43 +1876,16 @@ function step() {
 
   drawBackdrop();
 
-  // ---- Boss intro RGB flash + shake ----
-  if (bossIntroFrames > 0) {
-    bossIntroFrames--;
-    rgbFrame++;
-    const progress = 1 - bossIntroFrames / BOSS_INTRO_DUR;
-    // Screen shake -- decays as intro ends
-    const shakeMag = (1 - progress) * 18;
-    shakeX = (Math.random() - 0.5) * shakeMag;
-    shakeY = (Math.random() - 0.5) * shakeMag;
-    // RGB color flash layers
-    const rAlpha = Math.abs(Math.sin(rgbFrame * 0.18)) * 0.35 * (1 - progress * 0.5);
-    const gAlpha = Math.abs(Math.sin(rgbFrame * 0.18 + 2)) * 0.35 * (1 - progress * 0.5);
-    const bAlpha = Math.abs(Math.sin(rgbFrame * 0.18 + 4)) * 0.35 * (1 - progress * 0.5);
-    ctx.fillStyle = 'rgba(255,0,0,' + rAlpha + ')'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = 'rgba(0,255,0,' + gAlpha + ')'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = 'rgba(0,0,255,' + bAlpha + ')'; ctx.fillRect(0,0,W,H);
-    // BOSS text slam
-    const textAlpha = Math.min(1, progress * 3);
-    const textScale = 2.5 - progress * 1.5;
-    ctx.save();
-    ctx.globalAlpha = textAlpha;
-    ctx.translate(CX + shakeX, CY + shakeY);
-    ctx.scale(textScale, textScale);
-    ctx.font = 'bold ' + Math.round(clamp(28, W * 0.08, 72)) + 'px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillStyle   = '#ffffff';
-    ctx.shadowColor = boss && boss.num === 1 ? '#ff0066' : '#aa00ff';
-    ctx.shadowBlur  = 40;
-    ctx.fillText('BOSS ' + (boss ? boss.num : ''), 0, 0);
-    ctx.restore();
-  } else {
-    shakeX = 0; shakeY = 0;
-  }
 
-  // Apply shake offset to all subsequent drawing via translate
+  updateZone();
+  updateBend();
+
+  // Apply shake, plus a banking roll in the wild zones, to the whole world
   ctx.save();
   ctx.translate(shakeX, shakeY);
+  const roll = bendX * 0.13 * zoneMix().chaos;
+  ctx.translate(CX, H * SHIP_Y_R); ctx.rotate(roll); ctx.translate(-CX, -H * SHIP_Y_R);
+  drawWorldBackdrop();
 
   rings.forEach(r => { r.update(); r.draw(); });
   stars.forEach(s => { s.update(); s.draw(); });
@@ -1556,24 +1900,29 @@ function step() {
     ctx.lineWidth=1; ctx.stroke(); return true;
   });
 
+  updateScenery();
+  drawScenery();
+
+  // Lane rails drawn as bent polylines so they follow the fake curves
+  const brt = displayMode === 'bright';
   for (let l = 0; l < LANES; l++) {
-    const bx  = laneToX(l), off = (bx-CX)/(W*0.46);
-    const edge= (l===0||l===LANES-1);
-    const top = project(off,0.96), bot = project(off,0.02);
-    ctx.beginPath(); ctx.moveTo(top.sx,top.sy); ctx.lineTo(bot.sx,bot.sy);
-    const brt = displayMode === 'bright';
-    ctx.strokeStyle = edge ? (brt ? 'rgba(255,40,200,0.7)' : 'rgba(255,0,255,0.18)')
-                           : (brt ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.04)');
-    ctx.lineWidth   = edge ? 1.5 : 1; ctx.stroke();
+    const off  = laneWx(l);
+    const edge = (l===0||l===LANES-1);
+    ctx.beginPath();
+    for (let k = 0; k <= 14; k++) {
+      const p = project(off, 0.96 - 0.94 * k / 14);
+      k ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy);
+    }
+    ctx.strokeStyle = edge ? (brt ? zoneColor('lane', 0, 0.8) : 'rgba(255,0,255,0.18)')
+                           : (brt ? zoneColor('grid', 0, 0.35) : 'rgba(255,255,255,0.04)');
+    ctx.lineWidth   = edge ? 2 : 1; ctx.stroke();
   }
 
-  const alx=laneToX(shipLane), aoff=(alx-CX)/(W*0.46);
-  const p1=project(aoff-0.14,0.94), p2=project(aoff+0.14,0.94);
-  const p3=project(aoff+0.14,0.05), p4=project(aoff-0.14,0.05);
+  const aoff = laneWx(shipLane);
   ctx.beginPath();
-  ctx.moveTo(p1.sx,p1.sy); ctx.lineTo(p2.sx,p2.sy);
-  ctx.lineTo(p3.sx,p3.sy); ctx.lineTo(p4.sx,p4.sy);
-  ctx.closePath(); ctx.fillStyle = displayMode === 'bright' ? 'rgba(0,255,220,0.16)' : 'rgba(0,255,200,0.03)'; ctx.fill();
+  for (let k = 0; k <= 12; k++) { const p = project(aoff - 0.14, 0.94 - 0.89 * k / 12); k ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy); }
+  for (let k = 12; k >= 0; k--) { const p = project(aoff + 0.14, 0.94 - 0.89 * k / 12); ctx.lineTo(p.sx, p.sy); }
+  ctx.closePath(); ctx.fillStyle = brt ? 'rgba(0,255,220,0.18)' : 'rgba(0,255,200,0.03)'; ctx.fill();
 
   if (warningTimer > 0) {
     warningTimer--;
@@ -1584,6 +1933,14 @@ function step() {
   obstacles = obstacles.filter(o => {
     if (o.dead) return false;
     o.wz -= o.speed * timescale; o.rot += o.rotSpd * timescale;
+    if (o.kind === 'weaver') {
+      o.weaveT -= timescale;
+      if (o.weaveT <= 0 && o.wz > 0.15) {
+        const dir = o.lane === 0 ? 1 : o.lane === LANES - 1 ? -1 : (Math.random() < 0.5 ? -1 : 1);
+        o.lane += dir; o.weaveT = 45 + Math.random() * 45;
+      }
+      o.wx += (laneWx(o.lane) - o.wx) * 0.09 * timescale;
+    }
     if (!o.warnShown && o.wz < 0.45 && o.isBlock) {
       o.warnShown=true; warningTimer=45;
     }
@@ -1593,7 +1950,12 @@ function step() {
         if (o.isBlock) {
           // If player unlocked barrier breaking but didn't finish it -- still dies
           triggerDeath(sx,sy);
-        } else { spawnExplosion(sx,sy,'hsl('+o.hue+',100%,60%)',18); takeDamage(14); }
+        } else if (o.kind === 'fruit') {
+          const f = FRUITS[o.fruit], pts = f.pts * 2;
+          spawnExplosion(sx, sy, f.col, 24);
+          popup(sx, sy - 30, 'CAUGHT ' + f.name + ' +' + pts, f.col);
+          addScore(pts);
+        } else { spawnExplosion(sx,sy,'hsl('+o.hue+',100%,60%)',18); takeDamage(o.kind === 'tank' ? 22 : o.kind === 'shard' ? 8 : 14); }
       }
       return false;
     }
@@ -1605,7 +1967,6 @@ function step() {
   // ---- Boss ----
   if (bossActive && boss && !boss.dead) updateDrawBoss();
 
-  ctx.restore(); // end shake translate
 
   particles = particles.filter(p => {
     p.x+=p.vx; p.y+=p.vy; p.vx*=0.92; p.vy*=0.92; p.life-=p.decay;
@@ -1782,6 +2143,60 @@ function step() {
     }
     return true;
   });
+
+  drawPopups();
+  ctx.restore(); // end shake and roll
+
+  // ---- Boss intro RGB flash + shake ----
+  if (bossIntroFrames > 0) {
+    bossIntroFrames--;
+    rgbFrame++;
+    const progress = 1 - bossIntroFrames / BOSS_INTRO_DUR;
+    // Screen shake -- decays as intro ends
+    const shakeMag = (1 - progress) * 18;
+    shakeX = (Math.random() - 0.5) * shakeMag;
+    shakeY = (Math.random() - 0.5) * shakeMag;
+    // RGB color flash layers
+    const rAlpha = Math.abs(Math.sin(rgbFrame * 0.18)) * 0.35 * (1 - progress * 0.5);
+    const gAlpha = Math.abs(Math.sin(rgbFrame * 0.18 + 2)) * 0.35 * (1 - progress * 0.5);
+    const bAlpha = Math.abs(Math.sin(rgbFrame * 0.18 + 4)) * 0.35 * (1 - progress * 0.5);
+    ctx.fillStyle = 'rgba(255,0,0,' + rAlpha + ')'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = 'rgba(0,255,0,' + gAlpha + ')'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = 'rgba(0,0,255,' + bAlpha + ')'; ctx.fillRect(0,0,W,H);
+    // BOSS text slam
+    const textAlpha = Math.min(1, progress * 3);
+    const textScale = 2.5 - progress * 1.5;
+    ctx.save();
+    ctx.globalAlpha = textAlpha;
+    ctx.translate(CX + shakeX, CY + shakeY);
+    ctx.scale(textScale, textScale);
+    ctx.font = 'bold ' + Math.round(clamp(28, W * 0.08, 72)) + 'px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle   = '#ffffff';
+    ctx.shadowColor = boss && boss.num === 1 ? '#ff0066' : '#aa00ff';
+    ctx.shadowBlur  = 40;
+    ctx.fillText('BOSS ' + (boss ? boss.num : ''), 0, 0);
+    ctx.restore();
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+
+  // ---- Zone name banner ----
+  if (zoneBanner > 0 && countdownFrames === 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, zoneBanner / 30, (150 - zoneBanner) / 15);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold ' + Math.round(clamp(11, W * 0.03, 15)) + 'px Courier New';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,10,40,0.7)';
+    ctx.fillStyle = '#ffffff';
+    const zl = 'ZONE ' + (zoneIdx + 1);
+    ctx.strokeText(zl, CX, H * 0.25); ctx.fillText(zl, CX, H * 0.25);
+    ctx.font = 'bold ' + Math.round(clamp(20, W * 0.065, 38)) + 'px Courier New';
+    ctx.fillStyle = displayMode === 'bright' ? zoneColor('sun', 0) : '#00ffcc';
+    ctx.strokeText(ZONES[zoneIdx].name, CX, H * 0.25 + 34);
+    ctx.fillText(ZONES[zoneIdx].name, CX, H * 0.25 + 34);
+    ctx.restore();
+  }
 
   // ---- Slowmo vignette overlay ----
   if (slowmoFrames > 0) {
