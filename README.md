@@ -8,6 +8,6 @@ Live at rogue-rail.vercel.app
 
 This app is checked every morning by Control Troll.
 
-Latest change. First release. A rail shooter set to drum and bass with pause, mute, hull repair, music preload, a countdown, and a best score.
+Latest change. First polish pass with a bright sunset display mode as the default, steady speed on high refresh phones, and boss fixes.
 
 See CHANGELOG.md for the full history.

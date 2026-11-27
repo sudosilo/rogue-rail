@@ -1,1 +1,3 @@
+2026-11-27, v2026.11.27. First polish pass. Bright sunset display mode is now the default, with Classic still available from the title screen, the in game button, or the B key. The game now runs at the same speed on 90Hz and 120Hz phones. Boss shots no longer slow down twice during slow motion. Running out of hull now plays the full death explosion. The music moved into its own music.mp3 file so the page loads faster. The creator seal now sits at the bottom of the title screen.
+
 2026-10-09, v2026.10.09. First release. A rail shooter set to drum and bass with pause, mute, hull repair, music preload, a countdown, and a best score.
